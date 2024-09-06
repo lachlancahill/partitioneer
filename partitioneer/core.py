@@ -3,6 +3,8 @@ from typing import List, Union, Optional, Literal
 from datetime import datetime, date
 from dataclasses import dataclass
 import pandas as pd
+from tqdm import tqdm
+from multiprocessing import Pool
 
 FilterType = Literal[
     "equals",
@@ -14,6 +16,7 @@ FilterType = Literal[
     "in",
     "not_in",
 ]
+
 
 @dataclass
 class PartitionFilter:
@@ -33,13 +36,32 @@ class PartitionFilter:
     filter_type: FilterType
     value: Union[str, List[str], int, List[int], float, List[float]]
 
+
+def write_partition(args):
+    df, base_path, partition_cols, data_file_name, override_existing = args
+    path = base_path
+    for col in partition_cols:
+        path = os.path.join(path, f"{col}={df[col].iloc[0]}")
+
+    os.makedirs(path, exist_ok=True)
+    file_path = os.path.join(path, data_file_name)
+
+    if not override_existing and os.path.exists(file_path):
+        existing_df = pd.read_parquet(file_path)
+        new_df = pd.concat([existing_df, df], ignore_index=True)
+        new_df.to_parquet(file_path, index=False)
+    else:
+        df.to_parquet(file_path, index=False)
+
+
 def write_data_to_partitions(
         df: pd.DataFrame,
         base_path: str,
         partition_cols: Optional[List[str]] = None,
         date_col: Optional[str] = None,
         override_existing: bool = False,
-        data_file_name: str = "data.parquet"
+        data_file_name: str = "data.parquet",
+        num_processes: int = 4
 ) -> None:
     """
     Write data to partitioned Parquet files.
@@ -51,6 +73,7 @@ def write_data_to_partitions(
         date_col (Optional[str]): The date column to use for partitioning.
         override_existing (bool): Whether to override existing files.
         data_file_name (str): The name of the data file in each partition.
+        num_processes (int): The number of processes to use for multiprocessing.
 
     Raises:
         ValueError: If neither partition_cols nor date_col is provided, or if both are provided.
@@ -67,20 +90,17 @@ def write_data_to_partitions(
 
     df = df.sort_values(by=partition_cols)
 
-    for _, row in df.iterrows():
-        path = base_path
-        for col in partition_cols:
-            path = os.path.join(path, f"{col}={row[col]}")
+    grouped = df.groupby(partition_cols)
 
-        os.makedirs(path, exist_ok=True)
-        file_path = os.path.join(path, data_file_name)
+    with Pool(processes=num_processes) as pool:
+        list(tqdm(pool.imap_unordered(
+            write_partition,
+            [(group, base_path, partition_cols, data_file_name, override_existing) for _, group in grouped]),
+            total=len(grouped),
+            desc="Writing partitions"
+        ))
 
-        if not override_existing and os.path.exists(file_path):
-            existing_df = pd.read_parquet(file_path)
-            new_df = pd.concat([existing_df, row.to_frame().T], ignore_index=True)
-            new_df.to_parquet(file_path, index=False)
-        else:
-            row.to_frame().T.to_parquet(file_path, index=False)
+
 def convert_to_datetime(date_input: Optional[Union[str, datetime, date]]) -> Optional[datetime]:
     if date_input is None:
         return None
@@ -91,6 +111,7 @@ def convert_to_datetime(date_input: Optional[Union[str, datetime, date]]) -> Opt
     if isinstance(date_input, str):
         return datetime.strptime(date_input, "%Y-%m-%d")
     raise ValueError(f"Invalid date input: {date_input}")
+
 
 def read_data_from_partitions(
         base_path: str,
@@ -179,6 +200,8 @@ def read_data_from_partitions(
 
     result = pd.concat(dfs, ignore_index=True)
     return result.sort_values(by=partition_cols) if partition_cols else result
+
+
 def get_latest_partition_date(base_path: str) -> Optional[datetime]:
     """
     Get the latest partition date from the directory structure.
@@ -200,6 +223,7 @@ def get_latest_partition_date(base_path: str) -> Optional[datetime]:
             if latest_date is None or current_date > latest_date:
                 latest_date = current_date
     return latest_date
+
 
 def get_first_partition_date(base_path: str) -> Optional[datetime]:
     """
