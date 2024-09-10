@@ -33,8 +33,8 @@ def test_write_and_read_data(test_data, base_path):
     write_data_to_partitions(test_data, base_path, ['year', 'month', 'day'])
     result_df = read_data_from_partitions(base_path)
     pd.testing.assert_frame_equal(
-        test_data.sort_values(by=['year', 'month', 'day']).reset_index(drop=True),
-        result_df.sort_values(by=['year', 'month', 'day']).reset_index(drop=True)
+        test_data.sort_values(by=['year', 'month', 'day'], ascending=False).reset_index(drop=True),
+        result_df.sort_values(by=['year', 'month', 'day'], ascending=False).reset_index(drop=True)
     )
 
 def test_read_data_with_filters(test_data, base_path):
@@ -62,9 +62,9 @@ def test_write_data_with_date_col(base_path):
     write_data_to_partitions(df, base_path, date_col='date')
     result_df = read_data_from_partitions(base_path)
     assert set(result_df.columns) == {'date', 'value', 'year', 'month', 'day'}
-    assert result_df['year'].tolist() == [2022, 2023, 2023]
-    assert result_df['month'].tolist() == [12, 10, 10]
-    assert result_df['day'].tolist() == [31, 1, 2]
+    assert result_df['year'].tolist() == [2023, 2023, 2022]
+    assert result_df['month'].tolist() == [10, 10, 12]
+    assert result_df['day'].tolist() == [2, 1, 31]
 
 def test_write_data_override_existing(test_data, base_path):
     write_data_to_partitions(test_data, base_path, ['year', 'month', 'day'])

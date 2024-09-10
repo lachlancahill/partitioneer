@@ -2,11 +2,12 @@ from setuptools import setup, find_packages
 
 setup(
     name='partitioneer',
-    version='0.2.3',
+    version='0.2.4',
     packages=find_packages(),
     install_requires=[
         'pandas',
-        'pyarrow'
+        'pyarrow',
+        'tqdm',
     ],
     # author='Your Name',
     # author_email='your.email@example.com',

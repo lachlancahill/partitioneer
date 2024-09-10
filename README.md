@@ -74,6 +74,17 @@ pip install twine
 twine upload dist/*
 ```
 
+Automated build and publish script:
+
+```shell
+python setup.py sdist bdist_wheel
+pip install twine
+twine upload dist/* --password <add_pypi_token_here>
+rm -r ./build
+rm -r ./dist
+rm -r ./partitioneer.egg-info
+```
+
 ## License
 
 [MIT License](LICENSE)
