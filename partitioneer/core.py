@@ -6,6 +6,7 @@ import pandas as pd
 from tqdm import tqdm
 from multiprocessing.dummy import Pool
 import glob
+from .manual_parameters import DEFAULT_THREADS
 
 FilterType = Literal[
     "equals",
@@ -58,6 +59,13 @@ def write_partition(args):
         df.to_parquet(file_path, index=False)
 
 
+def get_threads_given_iterable(iterable_to_process):
+    min_sensible = min(len(iterable_to_process), DEFAULT_THREADS)
+    return max(min_sensible, 1)
+
+
+
+
 def write_data_to_partitions(
         df: pd.DataFrame,
         base_path: str,
@@ -86,6 +94,10 @@ def write_data_to_partitions(
     if (partition_cols is None and date_col is None) or (partition_cols is not None and date_col is not None):
         raise ValueError("Either partition_cols or date_col must be provided, but not both.")
 
+    if len(df) == 0:
+        print(f"INFO: Dataframe is empty. No data to be written to `{os.path.basename(base_path)}`.") # TODO: Use proper logging.
+        return
+
     if date_col:
         df[date_col] = pd.to_datetime(df[date_col])
         partition_cols = ['year', 'month', 'day']
@@ -109,7 +121,7 @@ def write_data_to_partitions(
     grouped = df.groupby(partition_cols)
 
     if num_threads is None:
-        num_threads = len(grouped)
+        num_threads = get_threads_given_iterable(grouped)
 
     with Pool(processes=num_threads) as pool:
         list(tqdm(pool.imap_unordered(
@@ -213,7 +225,7 @@ def read_data_from_partitions(
         filters = [filters]
 
     if num_threads is None:
-        num_threads = len(all_files)
+        num_threads = get_threads_given_iterable(all_files)
 
     with Pool(processes=num_threads) as pool:
         dfs = list(tqdm(
