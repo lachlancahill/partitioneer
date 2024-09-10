@@ -129,7 +129,7 @@ def write_data_to_partitions(
             [(group, base_path, partition_cols, data_file_name, override_existing, duplicate_existing) for _, group in
              grouped]),
             total=len(grouped),
-            desc="Writing partitions"
+            desc=f"Writing data to `{os.path.basename(base_path)}`"
         ))
 
 
@@ -234,7 +234,7 @@ def read_data_from_partitions(
                 [(file, filters, start_date, end_date, add_partition_date) for file in all_files]
             ),
             total=len(all_files),
-            desc="Reading and filtering partitions"
+            desc=f"Reading data from `{os.path.basename(base_path)}`"
         ))
 
     # Remove None values (filtered out partitions) and concatenate
