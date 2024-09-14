@@ -5,7 +5,8 @@ from dataclasses import dataclass
 import pandas as pd
 from tqdm import tqdm
 from multiprocessing.dummy import Pool
-import glob
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from .manual_parameters import DEFAULT_THREADS
 
 FilterType = Literal[
@@ -64,7 +65,55 @@ def get_threads_given_iterable(iterable_to_process):
     return max(min_sensible, 1)
 
 
+def find_parquet_files(path):
+    files = []
+    try:
+        for entry in os.scandir(path):
+            if entry.is_file() and entry.name.endswith('.parquet'):
+                files.append(entry.path)
+            elif entry.is_dir():
+                files.extend(find_parquet_files(entry.path))
+    except (PermissionError, FileNotFoundError):
+        print(f"Error accessing: {path}")
+    return files
 
+def find_parquet_files_parallel(base_path, num_threads=None):
+    if num_threads is None:
+        num_threads = DEFAULT_THREADS
+
+    if not os.path.exists(base_path):
+        print(f"Base path does not exist: {base_path}")
+        return []
+
+    if not os.path.isdir(base_path):
+        print(f"Base path is not a directory: {base_path}")
+        return []
+
+    # Get year directories
+    year_dirs = [os.path.join(base_path, d) for d in os.listdir(base_path)
+                 if os.path.isdir(os.path.join(base_path, d)) and d.startswith('year=')]
+
+    if not year_dirs:
+        # If there are no year directories, search the base_path directly
+        return find_parquet_files(base_path)
+
+    # Get month directories for each year
+    month_dirs = []
+    for year_dir in year_dirs:
+        month_dirs.extend([os.path.join(year_dir, m) for m in os.listdir(year_dir)
+                           if os.path.isdir(os.path.join(year_dir, m)) and m.startswith('month=')])
+
+    if not month_dirs:
+        # If there are no month directories, use year directories
+        search_dirs = year_dirs
+    else:
+        search_dirs = month_dirs
+
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+        results = list(executor.map(find_parquet_files, search_dirs))
+
+    all_files = [file for sublist in results for file in sublist]
+    return all_files
 
 def write_data_to_partitions(
         df: pd.DataFrame,
@@ -219,10 +268,10 @@ def read_data_from_partitions(
     start_date = convert_to_datetime(start_date)
     end_date = convert_to_datetime(end_date)
 
-    all_files = glob.glob(os.path.join(base_path, "**", "*.parquet"), recursive=True)
-
     if isinstance(filters, PartitionFilter):
         filters = [filters]
+
+    all_files = find_parquet_files_parallel(base_path, num_threads)
 
     if num_threads is None:
         num_threads = get_threads_given_iterable(all_files)

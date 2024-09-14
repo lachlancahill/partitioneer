@@ -160,3 +160,8 @@ cython_debug/
 /.idea/
 
 /pip_publish.sh
+
+
+zzzzz*
+partitioneer_testing
+*.csv
